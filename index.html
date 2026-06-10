@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bio-Check</title>
+    <style>
+        :root { 
+            --fisico: #00ff88; --emocional: #00d0ff; --intelectual: #ffcc00; 
+            --espiritual: #a200ff; --intuitivo: #ff0077; --financeiro: #ff8800;
+        }
+        
+        body { font-family: 'Segoe UI', sans-serif; background: #0a0a0a; color: white; margin: 0; display: flex; flex-direction: column; align-items: center; zoom: 100%; }
+        .app-container { width: 98vw; max-width: 1400px; background: #161616; padding: 15px; border-radius: 15px; }
+        canvas { background: #000; border-radius: 8px; width: 100%; height: 260px; display: block; border: 1px solid #333; cursor: grab; }
+        canvas:active { cursor: grabbing; }
+        
+        /* Alinhamento dos Controles */
+        .controles { 
+            display: flex; 
+            gap: 12px; 
+            justify-content: center; 
+            margin-bottom: 20px; 
+            flex-wrap: wrap; 
+            align-items: flex-end; /* Alinha a base dos inputs com a base dos botões */
+        }
+        
+        .campo-grupo { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+        label { font-size: 0.7rem; color: #aaa; text-transform: uppercase; margin-left: 2px; font-weight: bold; }
+        input, button { padding: 8px 14px; border-radius: 6px; border: none; background: #333; color: white; font-weight: bold; cursor: pointer; height: 38px; box-sizing: border-box; }
+        button:hover { background: #444; }
+        .print-btn { background: #2e7d32; }
+        .print-btn:hover { background: #388e3c; }
+
+        .info-paciente { text-align: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .info-paciente h3 { margin: 5px 0; color: #fff; text-transform: uppercase; letter-spacing: 1px; }
+        .info-paciente p { margin: 0; color: #aaa; font-size: 0.9rem; }
+
+        #avisoCritico { height: 20px; margin-top: 5px; font-size: 0.9rem; color: #ffcc00; font-weight: bold; text-align: center; }
+
+        .c-fis { color: var(--fisico) !important; }
+        .c-emo { color: var(--emocional) !important; }
+        .c-int { color: var(--intelectual) !important; }
+        .c-esp { color: var(--espiritual) !important; }
+        .c-itu { color: var(--intuitivo) !important; }
+        .c-fin { color: var(--financeiro) !important; }
+        .critico-txt { font-weight: bold; color: #fff !important; }
+
+        .tabela-container { margin-top: 20px; max-height: 400px; overflow-y: auto; background: #111; border-radius: 8px; border: 1px solid #333; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; table-layout: fixed; }
+        th { position: sticky; top: 0; background: #333; padding: 10px; color: white; border-bottom: 1px solid #444; }
+        td { padding: 8px; text-align: center; border-bottom: 1px solid #222; font-weight: bold; }
+
+        @media print {
+            @page { margin: 1cm; }
+            body { background: white !important; color: black !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .controles, #avisoCritico { display: none !important; }
+            .header h2 { color: black !important; }
+            .info-paciente h3 { color: black !important; }
+            .info-paciente p { color: #333 !important; }
+            .app-container { width: 100% !important; background: white !important; padding: 0; border: none; }
+            canvas { background: white !important; height: 200px !important; border: 1px solid #000 !important; }
+            .tabela-container { max-height: none !important; overflow: visible !important; background: white !important; border: none !important; }
+            table { font-size: 0.75rem; width: 100% !important; color: black !important; }
+            th { background: #f0f0f0 !important; color: black !important; border: 1px solid #000 !important; }
+            td { border: 1px solid #ddd !important; background: white !important; color: black !important; }
+            .c-fis { color: #008000 !important; } 
+            .c-emo { color: #0055ff !important; } 
+            .c-int { color: #b38f00 !important; } 
+            .c-esp { color: #6600cc !important; }
+            .c-itu { color: #cc005f !important; }
+            .c-fin { color: #cc6d00 !important; }
+            .critico-txt { color: black !important; font-weight: bolder !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header" style="padding: 10px;"><h2>BIO-CHECK</h2></div>
+
+<div class="app-container">
+    <div class="controles">
+        <div class="campo-grupo">
+            <label>Nome</label>
+            <input type="text" id="nomeUsuario" placeholder="Digite o nome..." oninput="salvarDados()">
+        </div>
+        <div class="campo-grupo">
+            <label>Nascimento</label>
+            <input type="date" id="nascimento" oninput="salvarDados()">
+        </div>
+        <div class="campo-grupo">
+            <label>Data de Foco</label>
+            <input type="date" id="dataFoco" oninput="ajustarParaDataFoco()">
+        </div>
+        <button onclick="navegar(-1)">◀ Anterior</button>
+        <button onclick="resetar()">Hoje</button>
+        <button onclick="navegar(1)">Próximo ▶</button>
+        <button class="print-btn" onclick="window.print()">🖨️ IMPRIMIR</button>
+    </div>
+
+    <div class="info-paciente">
+        <h3 id="displayNome">---</h3>
+        <p>Nascimento: <span id="displayNasc">--/--/----</span></p>
+    </div>
+
+    <canvas id="grafico" width="1600" height="260"></canvas>
+    <div id="avisoCritico"></div>
+
+    <div class="tabela-container">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 15%;">DATA</th>
+                    <th>FÍSICO</th>
+                    <th>EMOCIONAL</th>
+                    <th>INTELECT.</th>
+                    <th>ESPIRIT.</th>
+                    <th>INTUIT.</th>
+                    <th>FINANC.</th>
+                </tr>
+            </thead>
+            <tbody id="corpoTabela"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('grafico');
+    const ctx = canvas.getContext('2d');
+    const aviso = document.getElementById('avisoCritico');
+    let offsetDias = 0;
+    const DIAS_VISIVEIS = 30;
+    let arrastando = false;
+    let ultimoX = 0;
+
+    function carregarDadosSalvos() {
+        const nomeSalvo = localStorage.getItem('biocheck_nome');
+        const nascSalvo = localStorage.getItem('biocheck_nascimento');
+        if (nomeSalvo) document.getElementById('nomeUsuario').value = nomeSalvo;
+        if (nascSalvo) {
+            document.getElementById('nascimento').value = nascSalvo;
+        } else {
+            document.getElementById('nascimento').value = "2000-01-01";
+        }
+        document.getElementById('dataFoco').valueAsDate = new Date();
+        atualizarTudo();
+    }
+
+    function salvarDados() {
+        const nome = document.getElementById('nomeUsuario').value;
+        const nasc = document.getElementById('nascimento').value;
+        localStorage.setItem('biocheck_nome', nome);
+        localStorage.setItem('biocheck_nascimento', nasc);
+        atualizarTudo();
+    }
+
+    function ajustarParaDataFoco() {
+        const foco = document.getElementById('dataFoco').valueAsDate;
+        if (!foco) return;
+        const hoje = new Date();
+        hoje.setHours(0,0,0,0);
+        foco.setHours(0,0,0,0);
+        offsetDias = Math.round((foco - hoje) / 86400000);
+        atualizarTudo();
+    }
+
+    function atualizarTudo() {
+        const nome = document.getElementById('nomeUsuario').value;
+        const valNasc = document.getElementById('nascimento').value;
+        document.getElementById('displayNome').innerText = nome || "NOME NÃO INFORMADO";
+        if(valNasc) {
+            const d = valNasc.split('-');
+            document.getElementById('displayNasc').innerText = `${d[2]}/${d[1]}/${d[0]}`;
+        }
+        if(!valNasc) return;
+        const dataNasc = new Date(valNasc);
+        const dataReferencia = new Date();
+        dataReferencia.setHours(0,0,0,0);
+        dataReferencia.setDate(dataReferencia.getDate() + offsetDias);
+        document.getElementById('dataFoco').valueAsDate = dataReferencia;
+
+        const W = canvas.width, H = canvas.height, centroY = H / 2;
+        ctx.clearRect(0, 0, W, H);
+        
+        ctx.fillStyle = "#888"; 
+        ctx.font = "12px Arial";
+        for (let d = 0; d <= DIAS_VISIVEIS; d++) {
+            let x = (d / DIAS_VISIVEIS) * W;
+            let dataLabel = new Date(dataReferencia);
+            dataLabel.setDate(dataReferencia.getDate() - (DIAS_VISIVEIS / 2) + d);
+            let texto = `${dataLabel.getDate()}/${dataLabel.getMonth() + 1}`;
+            ctx.fillText(texto, x - 10, H - 10);
+            ctx.strokeStyle = "rgba(255,255,255,0.1)";
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H - 25); ctx.stroke();
+        }
+
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath(); ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H - 25); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.strokeStyle = "#333"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, centroY); ctx.lineTo(W, centroY); ctx.stroke();
+
+        const diasVividos = (dataReferencia - dataNasc) / 86400000;
+        let ciclosCriticosHoje = [];
+
+        function plotarLinha(periodo, cor, nomeCiclo) {
+            ctx.strokeStyle = cor; ctx.lineWidth = 3;
+            ctx.beginPath();
+            for (let x = 0; x <= W; x++) {
+                let d = diasVividos - (DIAS_VISIVEIS/2) + (x / W) * DIAS_VISIVEIS;
+                let v = Math.sin((2 * Math.PI * d) / periodo);
+                let y = centroY - v * 100;
+                if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                if (Math.round(x) === Math.round(W/2) && Math.abs(v) < 0.1) {
+                    ciclosCriticosHoje.push(nomeCiclo);
+                }
+            }
+            ctx.stroke();
+        }
+
+        plotarLinha(23, '#00ff88', 'Físico');
+        plotarLinha(28, '#00d0ff', 'Emocional');
+        plotarLinha(33, '#ffcc00', 'Intelectual');
+        plotarLinha(53, '#a200ff', 'Espiritual');
+        plotarLinha(38, '#ff0077', 'Intuitivo');
+        
+        const dHoje = (dataReferencia - dataNasc) / 86400000;
+        const vFin = (Math.sin((2*Math.PI*dHoje)/33) + Math.sin((2*Math.PI*dHoje)/38)) / 2;
+        if (Math.abs(vFin) < 0.1) ciclosCriticosHoje.push('Financeiro');
+
+        aviso.innerText = ciclosCriticosHoje.length > 0 ? `⚠️ Ponto de instabilidade: ${ciclosCriticosHoje.join(', ')}` : "";
+
+        const corpo = document.getElementById('corpoTabela');
+        let html = "";
+        for (let i = 0; i < 60; i++) {
+            let dataLinha = new Date(dataReferencia);
+            dataLinha.setDate(dataReferencia.getDate() + i);
+            let d = ((dataLinha - dataNasc) / 86400000);
+            let f = Math.sin((2 * Math.PI * d) / 23), e = Math.sin((2 * Math.PI * d) / 28), n = Math.sin((2 * Math.PI * d) / 33);
+            let es = Math.sin((2 * Math.PI * d) / 53), it = Math.sin((2 * Math.PI * d) / 38);
+            let fin = (n + it) / 2;
+            let critico = Math.abs(f)<0.1 || Math.abs(e)<0.1 || Math.abs(n)<0.1 || Math.abs(es)<0.1 || Math.abs(it)<0.1 || Math.abs(fin)<0.1;
+            html += `<tr>
+                <td class="${critico?'critico-txt':''}">${critico?'⚠️ ':''}${dataLinha.getDate().toString().padStart(2,'0')}/${(dataLinha.getMonth()+1).toString().padStart(2,'0')}</td>
+                <td class="c-fis">${(f*100).toFixed(0)}%</td>
+                <td class="c-emo">${(e*100).toFixed(0)}%</td>
+                <td class="c-int">${(n*100).toFixed(0)}%</td>
+                <td class="c-esp">${(es*100).toFixed(0)}%</td>
+                <td class="c-itu">${(it*100).toFixed(0)}%</td>
+                <td class="c-fin">${(fin*100).toFixed(0)}%</td>
+            </tr>`;
+        }
+        corpo.innerHTML = html;
+    }
+
+    canvas.addEventListener('mousedown', (e) => { arrastando = true; ultimoX = e.clientX; });
+    window.addEventListener('mousemove', (e) => {
+        if (!arrastando) return;
+        let deltaX = e.clientX - ultimoX;
+        offsetDias -= (deltaX / canvas.clientWidth) * DIAS_VISIVEIS;
+        ultimoX = e.clientX;
+        atualizarTudo();
+    });
+    window.addEventListener('mouseup', () => arrastando = false);
+
+    function navegar(n) { offsetDias += n; atualizarTudo(); }
+    function resetar() { offsetDias = 0; atualizarTudo(); }
+    window.onload = carregarDadosSalvos;
+</script>
+</body>
+</html>
