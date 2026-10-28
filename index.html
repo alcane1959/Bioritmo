@@ -33,6 +33,12 @@
         .print-btn:hover { background: #388e3c; }
 
         .info-paciente { text-align: center; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        select { padding: 8px 14px; border-radius: 6px; border: none; background: #333; color: white; font-weight: bold; cursor: pointer; height: 38px; box-sizing: border-box; }
+        .periodo-personalizado { display: none; gap: 12px; align-items: flex-end; }
+        .relatorio { margin-top: 20px; padding: 16px; background: #111; border: 1px solid #333; border-radius: 8px; line-height: 1.55; }
+        .relatorio h3 { margin: 0 0 10px; }
+        .relatorio p { margin: 7px 0; color: #ddd; }
+        .relatorio strong { color: #fff; }
         .info-paciente h3 { margin: 5px 0; color: #fff; text-transform: uppercase; letter-spacing: 1px; }
         .info-paciente p { margin: 0; color: #aaa; font-size: 0.9rem; }
 
@@ -52,17 +58,23 @@
         td { padding: 8px; text-align: center; border-bottom: 1px solid #222; font-weight: bold; }
 
         @media print {
-            @page { margin: 1cm; }
-            body { background: white !important; color: black !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            @page { size: A4 portrait; margin: 1cm; }
+            html, body { width: auto !important; margin: 0 !important; padding: 0 !important; }
+            body { display: block !important; zoom: 85% !important; background: white !important; color: black !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .controles, #avisoCritico { display: none !important; }
+            .relatorio { background: white !important; color: black !important; border: 1px solid #000 !important; page-break-inside: avoid; }
+            .relatorio p, .relatorio strong, .relatorio h3 { color: black !important; }
             .header h2 { color: black !important; }
             .info-paciente h3 { color: black !important; }
             .info-paciente p { color: #333 !important; }
-            .app-container { width: 100% !important; background: white !important; padding: 0; border: none; }
+            .app-container { width: calc(100% - 6mm) !important; max-width: none !important; box-sizing: border-box !important; background: white !important; padding: 0 !important; margin: 0 auto !important; border: none !important; }
+            canvas { box-sizing: border-box !important; }
             canvas { background: white !important; height: 200px !important; border: 1px solid #000 !important; }
             .tabela-container { max-height: none !important; overflow: visible !important; background: white !important; border: none !important; }
-            table { font-size: 0.75rem; width: 100% !important; color: black !important; }
-            th { background: #f0f0f0 !important; color: black !important; border: 1px solid #000 !important; }
+            table { font-size: 0.75rem; width: 100% !important; color: black !important; table-layout: fixed !important; }
+            thead { display: table-header-group; }
+            tr { page-break-inside: avoid; break-inside: avoid; }
+            th { position: static !important; top: auto !important; background: #f0f0f0 !important; color: black !important; border: 1px solid #000 !important; }
             td { border: 1px solid #ddd !important; background: white !important; color: black !important; }
             .c-fis { color: #008000 !important; } 
             .c-emo { color: #0055ff !important; } 
@@ -91,6 +103,26 @@
         <div class="campo-grupo">
             <label>Data de Foco</label>
             <input type="date" id="dataFoco" oninput="ajustarParaDataFoco()">
+        </div>
+        <div class="campo-grupo">
+            <label>Calcular por</label>
+            <select id="tipoPeriodo" onchange="alterarPeriodo()">
+                <option value="dia">Dia</option>
+                <option value="semana">Semana</option>
+                <option value="mes" selected>Mês</option>
+                <option value="ano">Ano</option>
+                <option value="personalizado">Data personalizada</option>
+            </select>
+        </div>
+        <div class="periodo-personalizado" id="periodoPersonalizado">
+            <div class="campo-grupo">
+                <label>Data inicial</label>
+                <input type="date" id="dataInicial" onchange="aplicarPeriodoPersonalizado()">
+            </div>
+            <div class="campo-grupo">
+                <label>Data final</label>
+                <input type="date" id="dataFinal" onchange="aplicarPeriodoPersonalizado()">
+            </div>
         </div>
         <button onclick="navegar(-1)">◀ Anterior</button>
         <button onclick="resetar()">Hoje</button>
@@ -122,6 +154,10 @@
             <tbody id="corpoTabela"></tbody>
         </table>
     </div>
+    <div class="relatorio" id="relatorio">
+        <h3>RELATÓRIO DO PERÍODO</h3>
+        <div id="conteudoRelatorio">Informe o nome e a data de nascimento para gerar o relatório.</div>
+    </div>
 </div>
 
 <script>
@@ -129,7 +165,10 @@
     const ctx = canvas.getContext('2d');
     const aviso = document.getElementById('avisoCritico');
     let offsetDias = 0;
-    const DIAS_VISIVEIS = 30;
+    let DIAS_VISIVEIS = 30;
+    let DIAS_TABELA = 30;
+    let inicioPersonalizado = null;
+    let fimPersonalizado = null;
     let arrastando = false;
     let ultimoX = 0;
 
@@ -164,6 +203,191 @@
         atualizarTudo();
     }
 
+    function normalizarData(data) {
+        const d = new Date(data);
+        d.setHours(0,0,0,0);
+        return d;
+    }
+    function alterarPeriodo() {
+        const tipo = document.getElementById('tipoPeriodo').value;
+        const areaPersonalizada = document.getElementById('periodoPersonalizado');
+        areaPersonalizada.style.display = tipo === 'personalizado' ? 'flex' : 'none';
+        const periodos = { dia: 1, semana: 7, mes: 30, ano: 365 };
+        if (tipo !== 'personalizado') {
+            DIAS_VISIVEIS = periodos[tipo];
+            DIAS_TABELA = periodos[tipo];
+            inicioPersonalizado = null;
+            fimPersonalizado = null;
+            atualizarTudo();
+            return;
+        }
+        const foco = document.getElementById('dataFoco').valueAsDate || new Date();
+        if (!document.getElementById('dataInicial').value) document.getElementById('dataInicial').valueAsDate = foco;
+        if (!document.getElementById('dataFinal').value) {
+            const fim = new Date(foco);
+            fim.setDate(fim.getDate() + 29);
+            document.getElementById('dataFinal').valueAsDate = fim;
+        }
+        aplicarPeriodoPersonalizado();
+    }
+    function aplicarPeriodoPersonalizado() {
+        const inicio = document.getElementById('dataInicial').valueAsDate;
+        const fim = document.getElementById('dataFinal').valueAsDate;
+        if (!inicio || !fim) return;
+        inicioPersonalizado = normalizarData(inicio);
+        fimPersonalizado = normalizarData(fim);
+        if (fimPersonalizado < inicioPersonalizado) {
+            aviso.innerText = '⚠️ A data final deve ser igual ou posterior à data inicial.';
+            return;
+        }
+        DIAS_VISIVEIS = Math.max(1, Math.round((fimPersonalizado - inicioPersonalizado) / 86400000) + 1);
+        DIAS_TABELA = DIAS_VISIVEIS;
+        const centro = new Date(inicioPersonalizado.getTime() + ((fimPersonalizado - inicioPersonalizado) / 2));
+        const hoje = normalizarData(new Date());
+        offsetDias = Math.round((centro - hoje) / 86400000);
+        atualizarTudo();
+    }
+    function classificarMedia(media) {
+        if (media >= 0.45) return 'muito favorável';
+        if (media >= 0.15) return 'favorável';
+        if (media > -0.15) return 'equilibrado, porém sujeito a alternâncias';
+        if (media > -0.45) return 'desfavorável';
+        return 'muito desfavorável';
+    }
+
+    function classificarConstancia(desvio) {
+        if (desvio < 0.30) return 'estável';
+        if (desvio < 0.55) return 'moderadamente variável';
+        return 'inconstante';
+    }
+
+    function conselhoCiclo(nome, media, desvio) {
+        const positivo = media >= 0.15;
+        const negativo = media <= -0.15;
+        const conselhos = {
+            'Físico': positivo
+                ? 'O período favorece disposição, iniciativa e atividades que dependam de energia. Aproveite os melhores dias, mas preserve descanso e ritmo.'
+                : negativo
+                    ? 'O período pede melhor administração da energia. Reduza excessos, respeite pausas e evite assumir uma carga maior do que consegue sustentar.'
+                    : 'A energia física tende ao equilíbrio, com dias melhores e piores. Uma rotina regular pode ajudar a aproveitar as altas sem se desgastar nas baixas.',
+            'Emocional': positivo
+                ? 'Há tendência favorável para vínculos, comunicação afetiva e decisões que exigem sensibilidade.'
+                : negativo
+                    ? 'Convém evitar reações impulsivas e decisões tomadas apenas pelo estado emocional do momento. Dê mais espaço para reflexão e diálogo.'
+                    : 'O campo emocional alterna entre abertura e recolhimento. Procure reconhecer essas mudanças antes de responder a situações importantes.',
+            'Intelectual': positivo
+                ? 'O cenário favorece estudo, planejamento, análise e resolução de problemas. É um bom período para transformar ideias em ações organizadas.'
+                : negativo
+                    ? 'O período pode exigir mais revisão, método e paciência mental. Evite decisões apressadas e confirme informações importantes.'
+                    : 'O desempenho intelectual tende a ser intermediário. Listas, prazos e revisão podem dar mais consistência às decisões.',
+            'Espiritual': positivo
+                ? 'O período favorece reflexão, propósito e alinhamento com valores pessoais. Reserve espaço para atividades que tragam sentido e direção.'
+                : negativo
+                    ? 'Pode haver menor sensação de direção ou conexão. Em vez de forçar respostas, retome práticas simples de reflexão e reavalie prioridades.'
+                    : 'O aspecto espiritual aparece equilibrado, mas variável. A constância em práticas de reflexão pode trazer maior clareza.',
+            'Intuitivo': positivo
+                ? 'A percepção intuitiva se mostra favorável. Use-a como apoio, combinando impressões pessoais com fatos antes de decidir.'
+                : negativo
+                    ? 'O período recomenda cautela com pressentimentos e conclusões rápidas. Compare percepções com evidências e opiniões confiáveis.'
+                    : 'A intuição oscila e deve funcionar como complemento, não como único critério para escolhas relevantes.',
+            'Financeiro': positivo
+                ? 'O indicador financeiro médio é favorável para organização, negociação e planejamento, desde que as decisões continuem baseadas em dados reais.'
+                : negativo
+                    ? 'O período recomenda prudência financeira. Evite impulsividade, revise compromissos e priorize previsibilidade antes de ampliar riscos.'
+                    : 'O cenário financeiro é neutro ou alternado. Mantenha controle, reserva e critérios objetivos para reduzir decisões inconsistentes.'
+        };
+        return conselhos[nome];
+    }
+
+    function recomendacaoOscilacao(analise, totalDias) {
+        const percentualPositivo = (analise.positivos / totalDias) * 100;
+        const percentualNegativo = (analise.negativos / totalDias) * 100;
+        const percentualTransicao = (analise.transicao / totalDias) * 100;
+        const orientacoes = {
+            'Físico': 'Distribua tarefas exigentes pelos dias de maior energia e preserve sono, pausas e recuperação nos dias de queda. Evite compensar uma baixa com excesso de esforço no dia seguinte; uma rotina gradual tende a produzir mais constância do que picos de produtividade.',
+            'Emocional': 'Adie conversas delicadas quando perceber reatividade elevada, registre o que provocou mudanças de humor e retome o assunto após um intervalo. Comunicação objetiva, pausas antes de responder e limites claros ajudam a reduzir decisões tomadas nos extremos emocionais.',
+            'Intelectual': 'Concentre análise, estudo e decisões complexas nos dias de maior clareza. Nas fases de baixa, priorize revisão, organização e tarefas conhecidas. Use listas de verificação e uma segunda leitura antes de concluir assuntos importantes.',
+            'Espiritual': 'Evite interpretar momentos de menor conexão como perda definitiva de direção. Mantenha práticas simples e regulares de reflexão, silêncio ou registro pessoal. Reavalie propósitos em mais de um momento do período, e não apenas durante um pico ou uma queda.',
+            'Intuitivo': 'Registre percepções antes de agir e compare-as posteriormente com fatos. Nos dias de maior confiança intuitiva, use a percepção como sinal para investigar; nos dias de baixa, evite ignorar dados objetivos ou buscar certezas imediatas.',
+            'Financeiro': 'Evite decisões financeiras relevantes em momentos de entusiasmo ou insegurança acentuados. Estabeleça limites prévios, prazo de espera, orçamento e critérios verificáveis. Compare alternativas e revise compromissos antes de comprar, investir ou assumir novas despesas.'
+        };
+        return `<p><strong>Atenção especial à oscilação em ${analise.nome}:</strong> este foi o ciclo com maior variação estatística do período, com índice de dispersão de ${(analise.desvio*100).toFixed(1)} pontos. Ficou ${analise.positivos} dia(s) em faixa positiva (${percentualPositivo.toFixed(1)}%), ${analise.negativos} em faixa negativa (${percentualNegativo.toFixed(1)}%) e ${analise.transicao} próximo(s) da transição (${percentualTransicao.toFixed(1)}%). Isso indica alternância relevante entre fases, e não um resultado permanentemente desfavorável. ${orientacoes[analise.nome]} A recomendação é observar a tendência de vários dias, identificar padrões recorrentes e evitar avaliar todo o período por um único pico ou queda.</p>`;
+    }
+
+    function gerarRelatorio(nome, dataNasc, periodoInicio, periodoFim) {
+        const ciclos = [
+            { chave: 'f', nome: 'Físico', periodo: 23 },
+            { chave: 'e', nome: 'Emocional', periodo: 28 },
+            { chave: 'n', nome: 'Intelectual', periodo: 33 },
+            { chave: 'es', nome: 'Espiritual', periodo: 53 },
+            { chave: 'it', nome: 'Intuitivo', periodo: 38 }
+        ];
+        const resultados = {};
+        ciclos.forEach(c => resultados[c.nome] = []);
+        resultados.Financeiro = [];
+
+        const totalDias = Math.max(1, Math.round((periodoFim - periodoInicio) / 86400000) + 1);
+        for (let i = 0; i < totalDias; i++) {
+            const data = new Date(periodoInicio);
+            data.setDate(data.getDate() + i);
+            const diasVividos = (data - dataNasc) / 86400000;
+            const valoresDia = {};
+            ciclos.forEach(c => {
+                valoresDia[c.chave] = Math.sin((2 * Math.PI * diasVividos) / c.periodo);
+                resultados[c.nome].push(valoresDia[c.chave]);
+            });
+            resultados.Financeiro.push((valoresDia.n + valoresDia.it) / 2);
+        }
+
+        const analises = Object.entries(resultados).map(([nomeCiclo, valores]) => {
+            const media = valores.reduce((a,b) => a + b, 0) / valores.length;
+            const variancia = valores.reduce((s,v) => s + Math.pow(v - media, 2), 0) / valores.length;
+            const desvio = Math.sqrt(variancia);
+            const positivos = valores.filter(v => v > 0.10).length;
+            const negativos = valores.filter(v => v < -0.10).length;
+            const transicao = valores.length - positivos - negativos;
+            return { nome: nomeCiclo, media, desvio, positivos, negativos, transicao };
+        });
+
+        const mediaGeral = analises.reduce((s,a) => s + a.media, 0) / analises.length;
+        const maisFavoravel = [...analises].sort((a,b) => b.media - a.media)[0];
+        const maisDesfavoravel = [...analises].sort((a,b) => a.media - b.media)[0];
+        const rankingOscilacao = [...analises].sort((a,b) => b.desvio - a.desvio);
+        const maisInstavel = rankingOscilacao[0];
+        const segundoMaisInstavel = rankingOscilacao[1];
+        const oscilacaoSeletiva = maisInstavel.desvio >= 0.62 &&
+            maisInstavel.positivos / totalDias >= 0.25 &&
+            maisInstavel.negativos / totalDias >= 0.25;
+        const destaqueOscilacao = oscilacaoSeletiva
+            ? recomendacaoOscilacao(maisInstavel, totalDias)
+            : `<p><strong>Constância do período:</strong> embora ${maisInstavel.nome} tenha apresentado a maior variação relativa, o critério seletivo de oscilação relevante não foi atingido. A diferença para o segundo ciclo mais variável, ${segundoMaisInstavel.nome}, foi de ${((maisInstavel.desvio - segundoMaisInstavel.desvio)*100).toFixed(1)} ponto(s). Portanto, não há indicação de destacar inconstância acentuada neste intervalo.</p>`;
+        const formatar = d => d.toLocaleDateString('pt-BR');
+        const tipo = document.getElementById('tipoPeriodo').value;
+        const nomesPeriodo = { dia: 'dia', semana: 'semana', mes: 'mês', ano: 'ano', personalizado: 'período personalizado' };
+
+        const detalhes = analises.map(a => `
+            <p><strong>${a.nome}:</strong> média de ${(a.media*100).toFixed(1)}%, cenário ${classificarMedia(a.media)} e comportamento ${classificarConstancia(a.desvio)}. Foram ${a.positivos} dia(s) em faixa positiva, ${a.negativos} em faixa negativa e ${a.transicao} próximo(s) da transição. ${conselhoCiclo(a.nome, a.media, a.desvio)}</p>
+        `).join('');
+
+        let sintese;
+        if (mediaGeral >= 0.15) {
+            sintese = 'A média conjunta indica um período globalmente favorável. Isso não significa desempenho uniforme todos os dias, mas sugere melhor aproveitamento quando planejamento e constância acompanham os momentos de alta.';
+        } else if (mediaGeral <= -0.15) {
+            sintese = 'A média conjunta indica um período globalmente mais exigente. A orientação é reduzir impulsividade, trabalhar com prioridades e usar os dias melhores para preparar decisões ou tarefas mais importantes.';
+        } else {
+            sintese = 'A média conjunta ficou próxima do equilíbrio. Nesse caso, o principal ponto não é considerar o período bom ou ruim, mas observar as diferenças entre os ciclos e administrar melhor as oscilações.';
+        }
+
+        document.getElementById('conteudoRelatorio').innerHTML = `
+            <p><strong>${nome || 'Usuário'}</strong>, este relatório resume as médias do ${nomesPeriodo[tipo]} entre <strong>${formatar(periodoInicio)}</strong> e <strong>${formatar(periodoFim)}</strong>, considerando ${totalDias} dia(s).</p>
+            <p><strong>Média geral do período:</strong> ${(mediaGeral*100).toFixed(1)}%. ${sintese}</p>
+            <p><strong>Leitura comparativa:</strong> o aspecto mais favorável foi <strong>${maisFavoravel.nome}</strong>, com média de ${(maisFavoravel.media*100).toFixed(1)}%. O aspecto que mais pede atenção foi <strong>${maisDesfavoravel.nome}</strong>, com média de ${(maisDesfavoravel.media*100).toFixed(1)}%. Entre os ciclos avaliados, <strong>${maisInstavel.nome}</strong> apresentou a maior dispersão dos resultados.</p>
+            ${destaqueOscilacao}
+            <h4>Análise detalhada das médias</h4>
+            ${detalhes}
+            <p><strong>Orientação final:</strong> fortaleça o aspecto ${maisDesfavoravel.nome.toLowerCase()} com hábitos regulares e use o desempenho ${maisFavoravel.nome.toLowerCase()} como apoio. No aspecto ${maisInstavel.nome.toLowerCase()}, procure menos reação aos extremos e mais consistência ao longo do período. Esta leitura é interpretativa e não substitui avaliação médica, psicológica ou financeira.</p>`;
+    }
+
     function atualizarTudo() {
         const nome = document.getElementById('nomeUsuario').value;
         const valNasc = document.getElementById('nascimento').value;
@@ -173,11 +397,20 @@
             document.getElementById('displayNasc').innerText = `${d[2]}/${d[1]}/${d[0]}`;
         }
         if(!valNasc) return;
-        const dataNasc = new Date(valNasc);
+        const [anoNasc, mesNasc, diaNasc] = valNasc.split('-').map(Number);
+        const dataNasc = new Date(anoNasc, mesNasc - 1, diaNasc);
+        dataNasc.setHours(0,0,0,0);
         const dataReferencia = new Date();
         dataReferencia.setHours(0,0,0,0);
         dataReferencia.setDate(dataReferencia.getDate() + offsetDias);
         document.getElementById('dataFoco').valueAsDate = dataReferencia;
+
+        const periodoInicio = inicioPersonalizado
+            ? new Date(inicioPersonalizado)
+            : new Date(dataReferencia);
+        const periodoFim = fimPersonalizado
+            ? new Date(fimPersonalizado)
+            : new Date(periodoInicio.getTime() + (DIAS_TABELA - 1) * 86400000);
 
         const W = canvas.width, H = canvas.height, centroY = H / 2;
         ctx.clearRect(0, 0, W, H);
@@ -208,7 +441,8 @@
             ctx.strokeStyle = cor; ctx.lineWidth = 3;
             ctx.beginPath();
             for (let x = 0; x <= W; x++) {
-                let d = diasVividos - (DIAS_VISIVEIS/2) + (x / W) * DIAS_VISIVEIS;
+                let dataPonto = new Date(periodoInicio.getTime() + (x / W) * Math.max(0, DIAS_VISIVEIS - 1) * 86400000);
+                let d = (dataPonto - dataNasc) / 86400000;
                 let v = Math.sin((2 * Math.PI * d) / periodo);
                 let y = centroY - v * 100;
                 if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
@@ -233,16 +467,16 @@
 
         const corpo = document.getElementById('corpoTabela');
         let html = "";
-        for (let i = 0; i < 60; i++) {
-            let dataLinha = new Date(dataReferencia);
-            dataLinha.setDate(dataReferencia.getDate() + i);
+        for (let i = 0; i < DIAS_TABELA; i++) {
+            let dataLinha = new Date(periodoInicio);
+            dataLinha.setDate(periodoInicio.getDate() + i);
             let d = ((dataLinha - dataNasc) / 86400000);
             let f = Math.sin((2 * Math.PI * d) / 23), e = Math.sin((2 * Math.PI * d) / 28), n = Math.sin((2 * Math.PI * d) / 33);
             let es = Math.sin((2 * Math.PI * d) / 53), it = Math.sin((2 * Math.PI * d) / 38);
             let fin = (n + it) / 2;
             let critico = Math.abs(f)<0.1 || Math.abs(e)<0.1 || Math.abs(n)<0.1 || Math.abs(es)<0.1 || Math.abs(it)<0.1 || Math.abs(fin)<0.1;
             html += `<tr>
-                <td class="${critico?'critico-txt':''}">${critico?'⚠️ ':''}${dataLinha.getDate().toString().padStart(2,'0')}/${(dataLinha.getMonth()+1).toString().padStart(2,'0')}</td>
+                <td class="${critico?'critico-txt':''}">${critico?'⚠️ ':''}${dataLinha.getDate().toString().padStart(2,'0')}/${(dataLinha.getMonth()+1).toString().padStart(2,'0')}/${dataLinha.getFullYear()}</td>
                 <td class="c-fis">${(f*100).toFixed(0)}%</td>
                 <td class="c-emo">${(e*100).toFixed(0)}%</td>
                 <td class="c-int">${(n*100).toFixed(0)}%</td>
@@ -252,6 +486,7 @@
             </tr>`;
         }
         corpo.innerHTML = html;
+        gerarRelatorio(nome, dataNasc, periodoInicio, periodoFim);
     }
 
     canvas.addEventListener('mousedown', (e) => { arrastando = true; ultimoX = e.clientX; });
@@ -264,8 +499,19 @@
     });
     window.addEventListener('mouseup', () => arrastando = false);
 
-    function navegar(n) { offsetDias += n; atualizarTudo(); }
-    function resetar() { offsetDias = 0; atualizarTudo(); }
+    function navegar(n) { offsetDias += n * Math.max(1, DIAS_VISIVEIS); atualizarTudo(); }
+    function resetar() {
+        offsetDias = 0;
+        inicioPersonalizado = null;
+        fimPersonalizado = null;
+        if (document.getElementById('tipoPeriodo').value === 'personalizado') {
+            document.getElementById('tipoPeriodo').value = 'mes';
+            document.getElementById('periodoPersonalizado').style.display = 'none';
+            DIAS_VISIVEIS = 30;
+            DIAS_TABELA = 30;
+        }
+        atualizarTudo();
+    }
     window.onload = carregarDadosSalvos;
 </script>
 </body>
